@@ -50,17 +50,6 @@ class PauseAtHeightCR(Script):
                     "minimum_value_warning": "1",
                     "enabled": "pause_at == 'layer_no'"
                 },
-                "disarm_timeout":
-                {
-                    "label": "Disarm timeout",
-                    "description": "After this time steppers are going to disarm (meaning that they can easily lose their positions). Set this to 0 if you don't want to set any duration.",
-                    "type": "int",
-                    "value": "0",
-                    "minimum_value": "0",
-                    "minimum_value_warning": "0",
-                    "maximum_value_warning": "1800",
-                    "unit": "s"
-                },
                 "head_park_enabled":
                 {
                     "label": "Park Print",
@@ -131,13 +120,6 @@ class PauseAtHeightCR(Script):
                     "type": "float",
                     "default_value": 3.3333,
                     "enabled": true
-                },
-                "redo_layer":
-                {
-                    "label": "Redo Layer",
-                    "description": "Redo the last layer before the pause, to get the filament flowing again after having oozed a bit during the pause.",
-                    "type": "bool",
-                    "default_value": false
                 },
                 "standby_temperature":
                 {
@@ -234,7 +216,6 @@ class PauseAtHeightCR(Script):
         pause_at = self.getSettingValueByKey("pause_at")
         pause_height = self.getSettingValueByKey("pause_height")
         pause_layer = self.getSettingValueByKey("pause_layer")
-        disarm_timeout = self.getSettingValueByKey("disarm_timeout")
         retraction_amount = self.getSettingValueByKey("retraction_amount")
         retraction_speed = self.getSettingValueByKey("retraction_speed")
         extrude_amount = self.getSettingValueByKey("extrude_amount")
@@ -244,7 +225,6 @@ class PauseAtHeightCR(Script):
         park_y = self.getSettingValueByKey("head_park_y")
         move_z = self.getSettingValueByKey("head_move_z")
         layers_started = False
-        redo_layer = self.getSettingValueByKey("redo_layer")
         standby_temperature = self.getSettingValueByKey("standby_temperature")
         firmware_retract = Application.getInstance().getGlobalContainerStack().getProperty("machine_firmware_retract", "value")
         control_temperatures = Application.getInstance().getGlobalContainerStack().getProperty("machine_nozzle_temp_enabled", "value")
@@ -349,24 +329,6 @@ class PauseAtHeightCR(Script):
                             y = self.getValue(prevLine, "Y")
                             break
 
-                # Maybe redo the last layer.
-                if redo_layer:
-                    prev_layer = data[index - 1]
-                    layer = prev_layer + layer
-
-                    # Get extruder's absolute position at the
-                    # beginning of the redone layer.
-                    # see https://github.com/nallath/PostProcessingPlugin/issues/55
-                    # Get X and Y from the next layer (better position for
-                    # the nozzle)
-                    x, y = self.getNextXY(layer)
-                    prev_lines = prev_layer.split("\n")
-                    for lin in prev_lines:
-                        new_e = self.getValue(lin, "E", current_e)
-                        if new_e != current_e:
-                            current_e = new_e
-                            break
-
                 prepend_gcode = ";TYPE:CUSTOM\n"
                 prepend_gcode += ";added code by post processing\n"
                 prepend_gcode += ";script: PauseAtHeightCR.py\n"
@@ -402,10 +364,6 @@ class PauseAtHeightCR(Script):
 
                 if display_text:
                     prepend_gcode += "M117 " + display_text + "\n"
-
-                # Set the disarm timeout
-                if disarm_timeout > 0:
-                    prepend_gcode += self.putValue(M = 18, S = disarm_timeout) + " ; Set the disarm timeout\n"
 
                 # Set a custom GCODE section before pause
                 if gcode_before:
@@ -466,11 +424,6 @@ class PauseAtHeightCR(Script):
 
                 # reset extrude value to pre pause value
                 prepend_gcode += self.putValue(G = 92, E = current_e) + "\n"
-
-                if redo_layer:
-                    # All other options reset the E value to what it was before the pause because E things were added.
-                    # If it's not yet reset, it still needs to be reset if there were any redo layers.
-                    prepend_gcode += self.putValue(G = 92, E = current_e) + "\n"
 
                 layer = prepend_gcode + layer
 
