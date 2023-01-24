@@ -85,42 +85,6 @@ class PauseAtHeightCR(Script):
                     "default_value": 15.0,
                     "enabled": "head_park_enabled"
                 },
-                "retraction_amount":
-                {
-                    "label": "Retraction",
-                    "description": "How much filament must be retracted at pause.",
-                    "unit": "mm",
-                    "type": "float",
-                    "default_value": 0,
-                    "enabled": true
-                },
-                "retraction_speed":
-                {
-                    "label": "Retraction Speed",
-                    "description": "How fast to retract the filament.",
-                    "unit": "mm/s",
-                    "type": "float",
-                    "default_value": 25,
-                    "enabled": true
-                },
-                "extrude_amount":
-                {
-                    "label": "Extrude Amount",
-                    "description": "How much filament should be extruded after pause. This is needed when doing a material change on Ultimaker2's to compensate for the retraction after the change. In that case 128+ is recommended.",
-                    "unit": "mm",
-                    "type": "float",
-                    "default_value": 0,
-                    "enabled": true
-                },
-                "extrude_speed":
-                {
-                    "label": "Extrude Speed",
-                    "description": "How fast to extrude the material after pause.",
-                    "unit": "mm/s",
-                    "type": "float",
-                    "default_value": 3.3333,
-                    "enabled": true
-                },
                 "standby_temperature":
                 {
                     "label": "Standby Temperature",
@@ -128,14 +92,6 @@ class PauseAtHeightCR(Script):
                     "unit": "°C",
                     "type": "int",
                     "default_value": 0,
-                    "enabled": true
-                },
-                "display_text":
-                {
-                    "label": "Display Text",
-                    "description": "Text that should appear on the display while paused. If left empty, there will not be any message.",
-                    "type": "str",
-                    "default_value": "",
                     "enabled": true
                 },
                 "machine_name":
@@ -165,20 +121,6 @@ class PauseAtHeightCR(Script):
                     },
                     "default_value": "RepRap (Marlin/Sprinter)",
                     "enabled": false
-                },
-                "custom_gcode_before_pause":
-                {
-                    "label": "G-code Before Pause",
-                    "description": "Any custom g-code to run before the pause, for example, M300 S440 P200 to beep.",
-                    "type": "str",
-                    "default_value": ""
-                },
-                "custom_gcode_after_pause":
-                {
-                    "label": "G-code After Pause",
-                    "description": "Any custom g-code to run after the pause, for example, M300 S440 P200 to beep.",
-                    "type": "str",
-                    "default_value": ""
                 }
             }
         }"""
@@ -216,10 +158,6 @@ class PauseAtHeightCR(Script):
         pause_at = self.getSettingValueByKey("pause_at")
         pause_height = self.getSettingValueByKey("pause_height")
         pause_layer = self.getSettingValueByKey("pause_layer")
-        retraction_amount = self.getSettingValueByKey("retraction_amount")
-        retraction_speed = self.getSettingValueByKey("retraction_speed")
-        extrude_amount = self.getSettingValueByKey("extrude_amount")
-        extrude_speed = self.getSettingValueByKey("extrude_speed")
         park_enabled = self.getSettingValueByKey("head_park_enabled")
         park_x = self.getSettingValueByKey("head_park_x")
         park_y = self.getSettingValueByKey("head_park_y")
@@ -229,9 +167,6 @@ class PauseAtHeightCR(Script):
         firmware_retract = Application.getInstance().getGlobalContainerStack().getProperty("machine_firmware_retract", "value")
         control_temperatures = Application.getInstance().getGlobalContainerStack().getProperty("machine_nozzle_temp_enabled", "value")
         initial_layer_height = Application.getInstance().getGlobalContainerStack().getProperty("layer_height_0", "value")
-        display_text = self.getSettingValueByKey("display_text")
-        gcode_before = self.getSettingValueByKey("custom_gcode_before_pause")
-        gcode_after = self.getSettingValueByKey("custom_gcode_after_pause")
         pause_command = self.putValue(M = 25)
 
         # T = ExtruderManager.getInstance().getActiveExtruderStack().getProperty("material_print_temperature", "value")
@@ -340,13 +275,6 @@ class PauseAtHeightCR(Script):
 
                 # Retraction
                 prepend_gcode += self.putValue(M = 83) + " ; switch to relative E values for any needed retraction\n"
-                if retraction_amount != 0:
-                    if firmware_retract: #Can't set the distance directly to what the user wants. We have to choose ourselves.
-                        retraction_count = 1 if control_temperatures else 3 #Retract more if we don't control the temperature.
-                        for i in range(retraction_count):
-                            prepend_gcode += self.putValue(G = 10) + "\n"
-                    else:
-                        prepend_gcode += self.putValue(G = 1, E = -retraction_amount, F = retraction_speed * 60) + "\n"
 
                 if park_enabled:
                     # Move the head away
@@ -362,35 +290,12 @@ class PauseAtHeightCR(Script):
                     # Set extruder standby temperature
                     prepend_gcode += self.putValue(M = 104, S = standby_temperature) + " ; standby temperature\n"
 
-                if display_text:
-                    prepend_gcode += "M117 " + display_text + "\n"
-
-                # Set a custom GCODE section before pause
-                if gcode_before:
-                    prepend_gcode += gcode_before + "\n"
-
                 # Wait till the user continues printing
                 prepend_gcode += pause_command + " ; Do the actual pause\n"
-
-                # Set a custom GCODE section before pause
-                if gcode_after:
-                    prepend_gcode += gcode_after + "\n"
 
                 if control_temperatures:
                     # Set extruder resume temperature
                     prepend_gcode += self.putValue(M = 109, S = int(target_temperature.get(current_t, 0))) + " ; resume temperature\n"
-
-                if extrude_amount != 0:  # Need to prime after the pause.
-                    # Push the filament back.
-                    if retraction_amount != 0:
-                        prepend_gcode += self.putValue(G = 1, E = retraction_amount, F = retraction_speed * 60) + "\n"
-
-                    # Prime the material.
-                    prepend_gcode += self.putValue(G = 1, E = extrude_amount, F = extrude_speed * 60) + "; Extra extrude after the unpause\n"
-
-                    # And retract again to make the movements back to the starting position.
-                    if retraction_amount != 0:
-                        prepend_gcode += self.putValue(G = 1, E = -retraction_amount, F = retraction_speed * 60) + "\n"
 
                 # Move the head back
                 if park_enabled:
@@ -398,14 +303,6 @@ class PauseAtHeightCR(Script):
                         prepend_gcode += self.putValue(G = 1, Z = current_z, F = 300) + "\n"
                     prepend_gcode += self.putValue(G = 1, X = x, Y = y, F = 9000) + "\n"
                     prepend_gcode += self.putValue(G = 1, Z = current_z, F = 300) + " ; move back down to resume height\n"
-
-                if retraction_amount != 0:
-                    if firmware_retract: #Can't set the distance directly to what the user wants. We have to choose ourselves.
-                        retraction_count = 1 if control_temperatures else 3 #Retract more if we don't control the temperature.
-                        for i in range(retraction_count):
-                            prepend_gcode += self.putValue(G = 11) + "\n"
-                    else:
-                        prepend_gcode += self.putValue(G = 1, E = retraction_amount, F = retraction_speed * 60) + "\n"
 
                 if current_extrusion_f != 0:
                     prepend_gcode += self.putValue(G = 1, F = current_extrusion_f) + " ; restore extrusion feedrate\n"
